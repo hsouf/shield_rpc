@@ -6,7 +6,7 @@ use warp::Filter;
 use web3::types::H160;
 use std::error::Error;
 use hex;
-use types::{JsonRpcRequest,RpcResponse,Transaction};
+use types::{JsonRpcRequest,RpcResponse,Transaction,Error as RpcError, RpcErrorCode};
 use utils::option_string_to_h160;
 
 
@@ -27,7 +27,7 @@ async fn main() {
                     id: None,
                     jsonrpc: "2.0".to_string(),
                     result: None,
-                    error: Some("Invalid JSON-RPC 2.0 request.".to_string()),
+                    error: RpcError{message: "Invalid JSON-RPC 2.0 request.".to_string(),code:RpcErrorCode::InvalidParams.to_error_code()},
                 }),
                 warp::http::StatusCode::BAD_REQUEST,
             );
@@ -40,7 +40,7 @@ async fn main() {
                     id: None,
                     jsonrpc: "2.0".to_string(),
                     result: None,
-                    error: Some("Invalid method. Expected 'eth_sendRawTransaction'.".to_string()),
+                    error: RpcError{message:"Invalid method. Expected 'eth_sendRawTransaction'.".to_string(), code: RpcErrorCode::InvalidParams.to_error_code()},
                 }),
                 warp::http::StatusCode::BAD_REQUEST,
             );
@@ -51,6 +51,7 @@ async fn main() {
 
         handle_rpc_request(t, &alert_list)
     });
+
     warp::serve(route).run(([127, 0, 0, 1], 3030)).await;
 
 }
@@ -123,7 +124,7 @@ let response = RpcResponse {
     id: None, // Set the appropriate ID if needed
     jsonrpc: "2.0".to_string(),
     result: if error_message.is_none() { Some("Transaction decoded successfully.".to_string()) } else { None },
-    error: error_message,
+    error: RpcError{message:error_message.unwrap(),code:RpcErrorCode::SuspiciousAddress.to_error_code()},
 };
 
 
