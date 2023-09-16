@@ -1,0 +1,18 @@
+[package]
+name = "rpc"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+web3 = "0.19.0"
+rustc-hex = "2.1.0"
+warp = "0.3"
+reqwest = "0.11"
+csv = "1.1"
+hex="0.4"
+tokio="1.32.0"
+serde = "1.0"
+serde_derive = "1.0"
+rlp = "0.5.2"
