@@ -1212,6 +1212,7 @@ dependencies = [
  "rustc-hex",
  "serde",
  "serde_derive",
+ "serde_json",
  "tokio",
  "warp",
  "web3",

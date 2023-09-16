@@ -1,30 +1,17 @@
-use csv::ReaderBuilder;
+mod types;
+mod utils;
 
+use csv::ReaderBuilder;
 use warp::Filter;
-use web3::types::{H160};
+use web3::types::H160;
 use std::error::Error;
 use hex;
-use serde_derive::Deserialize;
-
-
+use types::{JsonRpcRequest,RpcResponse,Transaction};
+use utils::option_string_to_h160;
 
 
 const ALERT_LIST_URL: &str = "https://raw.githubusercontent.com/forta-network/starter-kits/1131fb4a3221c611d931c7b212fb6a4077934d6b/scam-detector-py/manual_alert_list.tsv"; // Replace with your URL
 
-
-#[derive(Debug, Deserialize)]
-struct Params {
-    #[serde(rename = "0")]
-    pub raw_transaction: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct JsonRpcRequest {
-    pub jsonrpc: String,
-    pub id: i32,
-    pub method: String,
-    pub params: Vec<String>,
-}
 #[tokio::main]
 async fn main() {
     // Call an async function from a non-async context (block until it's done)
@@ -35,16 +22,32 @@ async fn main() {
     .and(warp::body::json())
     .map(  move |body: JsonRpcRequest| {
         if body.jsonrpc != "2.0" {
-            return warp::reply::with_status("Invalid JSON-RPC 2.0 request.".to_string(), warp::http::StatusCode::BAD_REQUEST);
+            return warp::reply::with_status(
+                warp::reply::json(&RpcResponse {
+                    id: None,
+                    jsonrpc: "2.0".to_string(),
+                    result: None,
+                    error: Some("Invalid JSON-RPC 2.0 request.".to_string()),
+                }),
+                warp::http::StatusCode::BAD_REQUEST,
+            );
         }
-    
-        // Ensure the method is "decode_tx"
+
+        // Ensure the method is "eth_sendRawTransaction"
         if body.method != "eth_sendRawTransaction" {
-            return warp::reply::with_status("Invalid method. Expected 'eth_sendRawTransaction'.".to_string(), warp::http::StatusCode::BAD_REQUEST);
+            return warp::reply::with_status(
+                warp::reply::json(&RpcResponse {
+                    id: None,
+                    jsonrpc: "2.0".to_string(),
+                    result: None,
+                    error: Some("Invalid method. Expected 'eth_sendRawTransaction'.".to_string()),
+                }),
+                warp::http::StatusCode::BAD_REQUEST,
+            );
         }
     let x=body.params.get(0).unwrap();
        
-   let t=Transaction::new(&x).unwrap();
+    let t=Transaction::new(&x).unwrap();
 
         handle_rpc_request(t, &alert_list)
     });
@@ -99,46 +102,39 @@ async fn main() {
 
 
 
-fn handle_rpc_request(tx: Transaction, alert_list: &[H160]) -> warp::reply::WithStatus<String>{
+fn handle_rpc_request(tx: Transaction, alert_list: &[H160]) -> warp::reply::WithStatus<warp::reply::Json> {
 
     let to_address = option_string_to_h160(tx.to).unwrap();
 
-    if !alert_list.contains(&to_address) {
-     warp::reply::with_status(
-        format!("Error: Interaction with suspicious contract. To Address: {:?}", to_address),
-            warp::http::StatusCode::BAD_REQUEST,
-        )
-    } else {
-      warp::reply::with_status(
-            "Transaction decoded successfully.".to_string(),
-            warp::http::StatusCode::OK,
-        )
-    }
-}
-fn option_string_to_h160(opt_string: Option<String>) -> Option<H160> {
-    opt_string.map(|s| {
-        // Parse the string as H160
-        H160::from_slice(&hex::decode(&s).unwrap_or_default())
-    })
+ // Check if the to address is in the alert list
+ let error_message = if !alert_list.contains(&to_address) {
+    Some(format!("Interaction with suspicious contract. To Address: {:?}", to_address))
+} else {
+    None
+};
+
+let status_code = match error_message {
+    Some(_) => warp::http::StatusCode::BAD_REQUEST,
+    None => warp::http::StatusCode::OK,
+};
+
+// Create the RPC response
+let response = RpcResponse {
+    id: None, // Set the appropriate ID if needed
+    jsonrpc: "2.0".to_string(),
+    result: if error_message.is_none() { Some("Transaction decoded successfully.".to_string()) } else { None },
+    error: error_message,
+};
+
+
+let json_response = warp::reply::json(&response);
+
+
+warp::reply::with_status(json_response, status_code)
+   
+    
 }
 
-struct Transaction { 
-    to: Option<String>,  // To address
-}
 
-impl Transaction {
-    fn new(raw_tx: &str) -> Result<Self, String> {
-        // Assuming a basic format where fields are in fixed positions
-        if raw_tx.len() < 32 * 2 {
-            return Err("Invalid raw transaction length".to_string());
-        }
 
-        let to = if &raw_tx[50..90] == "0000000000000000000000000000000000000000" {
-            None
-        } else {
-            Some(raw_tx[50..90].to_owned())
-        };
-       
-        Ok(Transaction {  to })
-    }
-}
+
