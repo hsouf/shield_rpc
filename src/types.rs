@@ -1,5 +1,6 @@
 use serde_derive::Deserialize;
-use serde::Serialize;
+use serde::{Serialize,Serializer};
+
 
 #[derive(Debug, Deserialize)]
 pub struct JsonRpcRequest {
@@ -10,18 +11,34 @@ pub struct JsonRpcRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct RpcResponse {
-   pub  id: Option<u64>,
-   pub jsonrpc: String,
-   pub result: Option<String>,
-   pub  error: Error,
+pub struct RpcResponse<'a>  {
+   pub id: i8,
+   pub   jsonrpc: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub   result: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub   error: Option<RpcError>,
+}
+impl<'a> RpcResponse<'a> {
+    // Constructor to create a new RpcResponse with default values
+    pub fn new(result: Option<&'a str>, error: Option<RpcError>) -> Self {
+        RpcResponse {
+            id: 2,
+            jsonrpc: "2.0",
+            result,
+            error,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Error {
+pub struct RpcError {
     pub code: i32,
     pub message: String,
 }
+
+
+
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum RpcErrorCode {

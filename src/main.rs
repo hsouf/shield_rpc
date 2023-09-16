@@ -6,7 +6,7 @@ use warp::Filter;
 use web3::types::H160;
 use std::error::Error;
 use hex;
-use types::{JsonRpcRequest,RpcResponse,Transaction,Error as RpcError, RpcErrorCode};
+use types::{JsonRpcRequest,RpcResponse,Transaction,RpcError, RpcErrorCode};
 use utils::option_string_to_h160;
 
 
@@ -15,7 +15,7 @@ const ALERT_LIST_URL: &str = "https://raw.githubusercontent.com/forta-network/st
 #[tokio::main]
 async fn main() {
 
-    let alert_list=fetch_alert_list(ALERT_LIST_URL).await.unwrap();
+    let alert_list=fetch_alert_list(ALERT_LIST_URL).await.unwrap();// TODO: add support for real time update of the alert list
  
     let route = warp::path!("shield" )
     .and(warp::post())
@@ -76,57 +76,59 @@ async fn main() {
 
 
 fn handle_rpc_request(req: JsonRpcRequest, alert_list: &[H160]) -> warp::reply::WithStatus<warp::reply::Json> {
+if req.jsonrpc != "2.0" {
+    return warp::reply::with_status(
+        warp::reply::json(&RpcResponse::new(None, Some(RpcError{message: "Invalid JSON-RPC 2.0 request.".to_string(),code:RpcErrorCode::InvalidParams.to_error_code()}))),
+        warp::http::StatusCode::BAD_REQUEST,
+    );
+    }
 
-    if req.jsonrpc != "2.0" {
+    
+if req.method != "eth_sendRawTransaction" {
         return warp::reply::with_status(
-            warp::reply::json(&RpcResponse {
-                id: None,
-                jsonrpc: "2.0".to_string(),
-                result: None,
-                error: RpcError{message: "Invalid JSON-RPC 2.0 request.".to_string(),code:RpcErrorCode::InvalidParams.to_error_code()},
-            }),
+            warp::reply::json(&RpcResponse::new(None, Some( RpcError{message:"Invalid method. Expected 'eth_sendRawTransaction'.".to_string(), code: RpcErrorCode::InvalidParams.to_error_code()}))),
             warp::http::StatusCode::BAD_REQUEST,
         );
     }
 
-    // Ensure the method is "eth_sendRawTransaction"
-    if req.method != "eth_sendRawTransaction" {
-        return warp::reply::with_status(
-            warp::reply::json(&RpcResponse {
-                id: None,
-                jsonrpc: "2.0".to_string(),
-                result: None,
-                error: RpcError{message:"Invalid method. Expected 'eth_sendRawTransaction'.".to_string(), code: RpcErrorCode::InvalidParams.to_error_code()},
-            }),
-            warp::http::StatusCode::BAD_REQUEST,
-        );
-    }
+let x=req.params.get(0).unwrap(); 
+let tx=Transaction::new(&x).unwrap();
 
-    let x=req.params.get(0).unwrap(); 
-    let tx=Transaction::new(&x).unwrap();
-
-    let to_address = option_string_to_h160(tx.to).unwrap();
+let to_address = option_string_to_h160(tx.to).unwrap();
 
  // Check if the to address is in the alert list
- let error_message = if !alert_list.contains(&to_address) {
-    Some(format!("Interaction with suspicious contract. To Address: {:?}", to_address))
+let is_malicious_address = if alert_list.contains(&to_address) {
+    true
+} else {
+    false
+};
+
+if !is_malicious_address {
+    //TODO: handle forwarding to target rpc endpoint here
+}
+
+let result: Option<&str> = if !is_malicious_address {
+    Some("hash of tx goes here")
 } else {
     None
 };
 
-let status_code = match error_message {
+let error_message: Option<String> = if is_malicious_address {
+    Some(format!("Interaction with a suspicious contract. To Address: {:?}", to_address))
+} else {
+    None
+};
+
+let status_code = match &error_message {
     Some(_) => warp::http::StatusCode::BAD_REQUEST,
     None => warp::http::StatusCode::OK,
 };
 
 // Create the RPC response
-let response = RpcResponse {
-    id: None, // Set the appropriate ID if needed
-    jsonrpc: "2.0".to_string(),
-    result: if error_message.is_none() { Some("Transaction decoded successfully.".to_string()) } else { None },
-    error: RpcError{message:error_message.unwrap(),code:RpcErrorCode::SuspiciousAddress.to_error_code()},
-};
-
+let response = RpcResponse::new(result,error_message.map(|message| RpcError {
+    code: 0,
+    message,
+})); 
 
 let json_response = warp::reply::json(&response);
 
