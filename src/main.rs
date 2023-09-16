@@ -14,44 +14,16 @@ const ALERT_LIST_URL: &str = "https://raw.githubusercontent.com/forta-network/st
 
 #[tokio::main]
 async fn main() {
-    // Call an async function from a non-async context (block until it's done)
+
     let alert_list=fetch_alert_list(ALERT_LIST_URL).await.unwrap();
  
-    let route = warp::path!("api" )
+    let route = warp::path!("shield" )
     .and(warp::post())
     .and(warp::body::json())
-    .map(  move |body: JsonRpcRequest| {
-        if body.jsonrpc != "2.0" {
-            return warp::reply::with_status(
-                warp::reply::json(&RpcResponse {
-                    id: None,
-                    jsonrpc: "2.0".to_string(),
-                    result: None,
-                    error: RpcError{message: "Invalid JSON-RPC 2.0 request.".to_string(),code:RpcErrorCode::InvalidParams.to_error_code()},
-                }),
-                warp::http::StatusCode::BAD_REQUEST,
-            );
-        }
-
-        // Ensure the method is "eth_sendRawTransaction"
-        if body.method != "eth_sendRawTransaction" {
-            return warp::reply::with_status(
-                warp::reply::json(&RpcResponse {
-                    id: None,
-                    jsonrpc: "2.0".to_string(),
-                    result: None,
-                    error: RpcError{message:"Invalid method. Expected 'eth_sendRawTransaction'.".to_string(), code: RpcErrorCode::InvalidParams.to_error_code()},
-                }),
-                warp::http::StatusCode::BAD_REQUEST,
-            );
-        }
-    let x=body.params.get(0).unwrap();
-       
-    let t=Transaction::new(&x).unwrap();
-
-        handle_rpc_request(t, &alert_list)
+    .map(  move |request: JsonRpcRequest| {
+        handle_rpc_request(request, &alert_list)
     });
-
+   // start server
     warp::serve(route).run(([127, 0, 0, 1], 3030)).await;
 
 }
@@ -103,7 +75,35 @@ async fn main() {
 
 
 
-fn handle_rpc_request(tx: Transaction, alert_list: &[H160]) -> warp::reply::WithStatus<warp::reply::Json> {
+fn handle_rpc_request(req: JsonRpcRequest, alert_list: &[H160]) -> warp::reply::WithStatus<warp::reply::Json> {
+
+    if req.jsonrpc != "2.0" {
+        return warp::reply::with_status(
+            warp::reply::json(&RpcResponse {
+                id: None,
+                jsonrpc: "2.0".to_string(),
+                result: None,
+                error: RpcError{message: "Invalid JSON-RPC 2.0 request.".to_string(),code:RpcErrorCode::InvalidParams.to_error_code()},
+            }),
+            warp::http::StatusCode::BAD_REQUEST,
+        );
+    }
+
+    // Ensure the method is "eth_sendRawTransaction"
+    if req.method != "eth_sendRawTransaction" {
+        return warp::reply::with_status(
+            warp::reply::json(&RpcResponse {
+                id: None,
+                jsonrpc: "2.0".to_string(),
+                result: None,
+                error: RpcError{message:"Invalid method. Expected 'eth_sendRawTransaction'.".to_string(), code: RpcErrorCode::InvalidParams.to_error_code()},
+            }),
+            warp::http::StatusCode::BAD_REQUEST,
+        );
+    }
+
+    let x=req.params.get(0).unwrap(); 
+    let tx=Transaction::new(&x).unwrap();
 
     let to_address = option_string_to_h160(tx.to).unwrap();
 
