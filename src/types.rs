@@ -1,8 +1,8 @@
 use serde_derive::Deserialize;
-use serde::{Serialize,Serializer};
+use serde::Serialize;
 
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct JsonRpcRequest {
     pub jsonrpc: String,
     pub id: i32,
@@ -36,9 +36,6 @@ pub struct RpcError {
     pub code: i32,
     pub message: String,
 }
-
-
-
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum RpcErrorCode {
