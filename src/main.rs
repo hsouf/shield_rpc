@@ -8,7 +8,7 @@ use std::error::Error;
 use hex;
 use types::{JsonRpcRequest,RpcResponse,Transaction,RpcError};
 use utils::option_string_to_h160;
-use reqwest::{Client};
+use reqwest::{Client, StatusCode};
 use serde_json::Value;
 
 
@@ -17,19 +17,24 @@ const ALERT_LIST_URL: &str = "https://raw.githubusercontent.com/forta-network/st
 #[tokio::main]
 async fn main() {
 
-    let alert_list=fetch_alert_list(ALERT_LIST_URL).await.unwrap();// TODO: add support for real time update of the alert list
- 
+    //let mutalert_list=fetch_alert_list(ALERT_LIST_URL).await.unwrap();// TODO: add support for real time update of the alert list
+
     let route = warp::path!("shield")
     .and(warp::post())
     .and(warp::body::json())
-    .map(move |request: JsonRpcRequest| {
-        handle_eth_sendRawTransaction(&request, &alert_list, "kkk")
+    .then(|request: JsonRpcRequest| async move {
+        let target="https://rpc-goerli.flashbots.net/?hint=hash";
+        let empty_slice: &[H160] = &[];
+        if request.method=="eth_sendRawTransaction"{
+           handle_eth_send_raw_transaction(&request, &empty_slice, target).await
+        }else{
+          handle_rpc_request(&request, target).await
+           
+    }
+      
     });
 
-
-// Start the server
-warp::serve(route).run(([127, 0, 0, 1], 3030)).await;
-
+    warp::serve(route).run(([127, 0, 0, 1], 3030)).await;
 }
 
  async fn fetch_alert_list(url: &str) -> Result<Vec<H160>, Box<dyn Error>> {
@@ -84,68 +89,85 @@ let x=req.params.get(0).unwrap();
 let tx=Transaction::new(&x).unwrap();
 let to_address = option_string_to_h160(tx.to).unwrap();
  // Check if the to address is in the alert list
-let is_malicious_address = if alert_list.contains(&to_address) {
-    true
+if alert_list.contains(&to_address) {
+   return true
 } else {
-    false
+   return false
 };
-
-is_malicious_address
 }
 
-async fn handle_eth_sendRawTransaction(req: &JsonRpcRequest, alert_list: &[H160], target_endpoint: &str) -> warp::reply::WithStatus<warp::reply::Json> {
-    
-    let x=req.params.get(0).unwrap(); 
-    let tx=Transaction::new(&x).unwrap();
-    
-    let to_address = option_string_to_h160(tx.to).unwrap();
-   
-     // Check if the to address is in the alert list
-    let is_malicious_address = is_malicious_to_address(req, alert_list);
-    let result: Option<&str> = if !is_malicious_address {
-        Some("hash of tx goes here")
-    } else {
-        None
-    };
-    let mut error_message: Option<String> = if is_malicious_address {
-        Some(format!("Interaction with a suspicious contract. To Address: {:?}", to_address))
-    } else {
-        None
-    };
 
-    if !is_malicious_address {
-      let response=forward_request_to_target_rpc(req, target_endpoint);
-     match response.await {
-         Ok(Result) => {
-            //log successful txs forwards
-        println!("RPC response: {:?}", Result);
-    },
-    Err(err) => {
-     
-       error_message=Some(format!("Failed to forward tx with error {:?}", err))
-    }
-}
 
-    }
+async fn handle_eth_send_raw_transaction(req: &JsonRpcRequest, alert_list: &[H160], target_endpoint: &str) -> warp::reply::WithStatus<warp::reply::Json>  {
     
-    let status_code = match &error_message {
-        Some(_) => warp::http::StatusCode::BAD_REQUEST,
-        None => warp::http::StatusCode::OK,
-    };
-    
-    // Create the RPC response
-    let response = RpcResponse::new(result,error_message.map(|message| RpcError {
-        code: 0,
-        message,
-    })); 
-    
-    let json_response = warp::reply::json(&response);
+    let empty_slice: &[H160] = &[];
+            let x=req.params.get(0).unwrap(); 
+            let tx=Transaction::new(&x).unwrap();
+            
+            let to_address = option_string_to_h160(tx.to).unwrap();
+           
+             // Check if the to address is in the alert list
+            let is_malicious_address = is_malicious_to_address(req, alert_list);
+         
+            let  error_message: Option<String> = if !is_malicious_address {
+                Some(format!("Interaction with a suspicious contract. To Address: {:?}", to_address))
+            } else {
+                None
+            };
+  
+         
+            if is_malicious_address {
 
-    warp::reply::with_status(json_response, status_code)
+               
+                let response = RpcResponse::new(None,error_message.map(|message| RpcError {
+                    code: 0,
+                    message,
+                })); 
+                
+                let json_response = warp::reply::json(&response);
+            
+                warp::reply::with_status(json_response, warp::http::StatusCode::OK)
+            }else{
 
+                let response = forward_request_to_target_rpc(&req, &target_endpoint).await; 
+                let  json_response;
+                match response {
+                  Ok(res) => {
+                      json_response = warp::reply::json(&res);            
+                  }
+                  Err(err) => {
+                      // Create a JSON response with the error message
+                      json_response = warp::reply::json(&format!("Error: {}", err));
+                      // Return the JSON response with status code ACCEPTED
+                       
+                  }        
+                  }
+          
+                 warp::reply::with_status(json_response, warp::http::StatusCode::OK)}
 
 }
 
+
+async fn handle_rpc_request(req: &JsonRpcRequest, target_endpoint: &str) -> warp::reply::WithStatus<warp::reply::Json>{
+    let response= forward_request_to_target_rpc(req, target_endpoint).await;
+    let  json_response;
+    match response {
+      Ok(res) => {
+          json_response = warp::reply::json(&res);
+
+          
+      }
+      Err(err) => {
+          // Create a JSON response with the error message
+          json_response = warp::reply::json(&format!("Error: {}", err));
+
+
+           
+      }        
+      }
+
+     warp::reply::with_status(json_response, warp::http::StatusCode::OK)
+}
 
 async fn forward_request_to_target_rpc(req: &JsonRpcRequest, target_endpoint: &str) -> Result<Value, Box<dyn Error>> {
     let client = Client::new();
@@ -171,7 +193,5 @@ async fn forward_request_to_target_rpc(req: &JsonRpcRequest, target_endpoint: &s
                 Err(err.into())
             }
         }
-    
-
-
+        
 }
