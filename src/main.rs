@@ -11,20 +11,20 @@ use utils::option_string_to_h160;
 use warp::Filter;
 use web3::types::H160;
 
-const ALERT_LIST_URL: &str = "https://raw.githubusercontent.com/forta-network/starter-kits/1131fb4a3221c611d931c7b212fb6a4077934d6b/scam-detector-py/manual_alert_list.tsv"; // Replace with your URL
+const ALERT_LIST_URL: &str = "https://raw.githubusercontent.com/forta-network/starter-kits/1131fb4a3221c611d931c7b212fb6a4077934d6b/scam-detector-py/manual_alert_list.tsv";
 
 #[tokio::main]
 async fn main() {
     use std::sync::Arc;
 
-    let alert_list = fetch_alert_list(ALERT_LIST_URL).await.unwrap(); // Assuming alert_list has type T
-    let alert_list_arc = Arc::new(alert_list); // Convert to Arc<T>
+    let alert_list = fetch_alert_list(ALERT_LIST_URL).await.unwrap();
+    let alert_list_arc = Arc::new(alert_list);
 
     let route = warp::path!("shield")
         .and(warp::post())
         .and(warp::body::json())
         .and(warp::query::raw())
-        .clone() // Clone the Arc to increment the reference count
+        .clone()
         .then({
             let alert_list = Arc::clone(&alert_list_arc);
             move |request: JsonRpcRequest, rpc_param: String| {
@@ -35,17 +35,11 @@ async fn main() {
                     .next()
                     .map(String::from)
                     .unwrap_or_else(|| "default_url_if_empty".to_string());
-                async move {
-                    if request.method == "eth_sendRawTransaction" {
-                        handle_eth_send_raw_transaction(&request, alert_list.to_vec(), &target)
-                            .await
-                    } else {
-                        handle_rpc_request(&request, &target).await
-                    }
-                }
+
+                async move { handle_rpc_request(&request, &target, alert_list.to_vec()).await }
             }
         });
-
+    //start server
     warp::serve(route).run(([127, 0, 0, 1], 3030)).await;
 }
 
@@ -106,12 +100,7 @@ fn is_malicious_to_address(req: &JsonRpcRequest, alert_list: Vec<H160>) -> bool 
     let x = req.params.get(0).unwrap();
     let tx = Transaction::new(&x).unwrap();
     let to_address = option_string_to_h160(tx.to).unwrap();
-    // Check if the to address is in the alert list
-    if alert_list.contains(&to_address) {
-        return true;
-    } else {
-        return false;
-    };
+    return alert_list.contains(&to_address);
 }
 
 async fn handle_eth_send_raw_transaction(
@@ -166,7 +155,11 @@ async fn handle_eth_send_raw_transaction(
 async fn handle_rpc_request(
     req: &JsonRpcRequest,
     target_endpoint: &str,
+    alert_list: Vec<H160>,
 ) -> warp::reply::WithStatus<warp::reply::Json> {
+    if req.method == "eth_sendRawTransaction" {
+        return handle_eth_send_raw_transaction(req, alert_list, target_endpoint).await;
+    }
     let response = forward_request_to_target_rpc(req, target_endpoint).await;
     let json_response;
     match response {
