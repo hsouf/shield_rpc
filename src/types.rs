@@ -1,6 +1,5 @@
-use serde_derive::Deserialize;
 use serde::Serialize;
-
+use serde_derive::Deserialize;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct JsonRpcRequest {
@@ -11,13 +10,13 @@ pub struct JsonRpcRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct RpcResponse<'a>  {
-   pub id: i8,
-   pub   jsonrpc: &'a str,
+pub struct RpcResponse<'a> {
+    pub id: i8,
+    pub jsonrpc: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub   result: Option<&'a str>,
+    pub result: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub   error: Option<RpcError>,
+    pub error: Option<RpcError>,
 }
 impl<'a> RpcResponse<'a> {
     // Constructor to create a new RpcResponse with default values
@@ -39,25 +38,25 @@ pub struct RpcError {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum RpcErrorCode {
-   SuspiciousAddress,
-   InvalidParams,
+    InvalidRequest,
+    InvalidParams,
 }
 
 impl RpcErrorCode {
     pub fn to_error_code(&self) -> i32 {
         match self {
-            RpcErrorCode::SuspiciousAddress => 1, 
-            RpcErrorCode::InvalidParams => -32602, 
+            RpcErrorCode::InvalidRequest => -32600,
+            RpcErrorCode::InvalidParams => -32602,
         }
     }
 }
 
-pub struct Transaction { 
-   pub to: Option<String>,  // To address
+pub struct Transaction {
+    pub to: Option<String>, // To address
 }
 
 impl Transaction {
-   pub fn new(raw_tx: &str) -> Result<Self, String> {
+    pub fn new(raw_tx: &str) -> Result<Self, String> {
         // Assuming a basic format where fields are in fixed positions
         if raw_tx.len() < 32 * 2 {
             return Err("Invalid raw transaction length".to_string());
@@ -68,8 +67,7 @@ impl Transaction {
         } else {
             Some(raw_tx[50..90].to_owned())
         };
-       
+
         Ok(Transaction { to })
     }
 }
-

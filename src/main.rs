@@ -6,7 +6,7 @@ use hex;
 use reqwest::Client;
 use serde_json::Value;
 use std::error::Error;
-use types::{JsonRpcRequest, RpcError, RpcResponse, Transaction};
+use types::{JsonRpcRequest, RpcError, RpcErrorCode, RpcResponse, Transaction};
 use utils::option_string_to_h160;
 use warp::Filter;
 use web3::types::H160;
@@ -100,7 +100,7 @@ fn is_malicious_to_address(req: &JsonRpcRequest, alert_list: Vec<H160>) -> bool 
     let x = req.params.get(0).unwrap();
     let tx = Transaction::new(&x).unwrap();
     let to_address = option_string_to_h160(tx.to).unwrap();
-    return alert_list.contains(&to_address);
+    return !alert_list.contains(&to_address);
 }
 
 async fn handle_eth_send_raw_transaction(
@@ -116,7 +116,7 @@ async fn handle_eth_send_raw_transaction(
     // Check if the to address is in the alert list
     let is_malicious_address = is_malicious_to_address(req, alert_list);
 
-    let error_message: Option<String> = if !is_malicious_address {
+    let error_message: Option<String> = if is_malicious_address {
         Some(format!(
             "Interaction with a suspicious contract. To Address: {:?}",
             to_address
@@ -128,7 +128,10 @@ async fn handle_eth_send_raw_transaction(
     if is_malicious_address {
         let response = RpcResponse::new(
             None,
-            error_message.map(|message| RpcError { code: 0, message }),
+            error_message.map(|message| RpcError {
+                code: RpcErrorCode::InvalidRequest.to_error_code(),
+                message,
+            }),
         );
 
         let json_response = warp::reply::json(&response);
@@ -160,6 +163,7 @@ async fn handle_rpc_request(
     if req.method == "eth_sendRawTransaction" {
         return handle_eth_send_raw_transaction(req, alert_list, target_endpoint).await;
     }
+
     let response = forward_request_to_target_rpc(req, target_endpoint).await;
     let json_response;
     match response {
