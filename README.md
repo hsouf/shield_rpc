@@ -9,6 +9,19 @@ Example:
 ```
 http://localhost:3030/shield?rpc=https://rpc-goerli.flashbots.net/hint=hash
 ``````
+![shield_rpc drawio](https://github.com/hsouf/shield_rpc/assets/37840702/872120d7-ee36-45e5-907d-fce1ed3934c3)
+
+### Running locally
+
+Build the Rust Project:
+``````
+Cargo build
+``````
+
+Run project 
+``````
+cargo run
+``````
 
 ## Upcoming
 
