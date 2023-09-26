@@ -9,7 +9,7 @@ Example:
 ```
 http://localhost:3030/shield?rpc=https://rpc-goerli.flashbots.net/hint=hash
 ``````
-![shield_rpc drawio](https://github.com/hsouf/shield_rpc/assets/37840702/872120d7-ee36-45e5-907d-fce1ed3934c3)
+![shield_rpc drawio](https://github.com/hsouf/shield_rpc/assets/37840702/42867beb-e82f-42c1-a6b4-e93a3a2b30f0)
 
 ### Running locally
 
