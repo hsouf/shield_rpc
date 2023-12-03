@@ -19,9 +19,9 @@ Cargo build
 ``````
 
 Run project 
-``````
+`````
 cargo run
-``````
+`````
 
 ## Upcoming
 
