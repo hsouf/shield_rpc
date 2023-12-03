@@ -3,9 +3,9 @@ mod utils;
 
 use csv::ReaderBuilder;
 use hex;
-use reqwest::Client;
+use reqwest::{Client, Url};
 use serde_json::Value;
-use std::error::Error;
+use std::{error::Error, str::FromStr};
 use types::{JsonRpcRequest, RpcError, RpcErrorCode, RpcResponse, Transaction};
 use utils::option_string_to_h160;
 use warp::Filter;
@@ -34,9 +34,17 @@ async fn main() {
                     .skip(1)
                     .next()
                     .map(String::from)
-                    .unwrap_or_else(|| "default_url_if_empty".to_string());
+                    .unwrap_or_else(|| "https://rpc-goerli.flashbots.net/fast".to_string());
 
-                async move { handle_rpc_request(&request, &target, alert_list.to_vec()).await }
+                async move {
+                    if let Err(_) = Url::from_str(&target) {
+                        return warp::reply::with_status(
+                            warp::reply::json(&format!("Please provide a valid RPC URL")),
+                            warp::http::StatusCode::OK,
+                        );
+                    }
+                    handle_rpc_request(&request, &target, alert_list.to_vec()).await
+                }
             }
         });
     //start server
