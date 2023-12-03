@@ -100,7 +100,7 @@ fn is_malicious_to_address(req: &JsonRpcRequest, alert_list: Vec<H160>) -> bool 
     let x = req.params.get(0).unwrap();
     let tx = Transaction::new(&x).unwrap();
     let to_address = option_string_to_h160(tx.to).unwrap();
-    return !alert_list.contains(&to_address);
+    return alert_list.contains(&to_address);
 }
 
 async fn handle_eth_send_raw_transaction(
@@ -108,51 +108,41 @@ async fn handle_eth_send_raw_transaction(
     alert_list: Vec<H160>,
     target_endpoint: &str,
 ) -> warp::reply::WithStatus<warp::reply::Json> {
-    let x = req.params.get(0).unwrap();
-    let tx = Transaction::new(&x).unwrap();
+    let raw_tx = req.params.get(0).unwrap();
+    let tx = Transaction::new(&raw_tx).unwrap();
 
     let to_address = option_string_to_h160(tx.to).unwrap();
-
-    // Check if the to address is in the alert list
-    let is_malicious_address = is_malicious_to_address(req, alert_list);
-
-    let error_message: Option<String> = if is_malicious_address {
-        Some(format!(
-            "Interaction with a suspicious contract. To Address: {:?}",
-            to_address
-        ))
-    } else {
-        None
-    };
-
-    if is_malicious_address {
+    // if malicious interaction return error and don't forward tx to target rpc
+    if is_malicious_to_address(req, alert_list) {
         let response = RpcResponse::new(
             None,
-            error_message.map(|message| RpcError {
+            Some(RpcError {
                 code: RpcErrorCode::InvalidRequest.to_error_code(),
-                message,
+                message: format!(
+                    "Interaction with a suspicious contract. To Address: {:?}",
+                    to_address
+                ),
             }),
         );
 
         let json_response = warp::reply::json(&response);
-
-        warp::reply::with_status(json_response, warp::http::StatusCode::OK)
-    } else {
-        let response = forward_request_to_target_rpc(&req, target_endpoint).await;
-        let json_response;
-        match response {
-            Ok(res) => {
-                json_response = warp::reply::json(&res);
-            }
-            Err(err) => {
-                // Create a JSON response with the error message
-                json_response = warp::reply::json(&format!("Error: {}", err));
-                // Return the JSON response with status code ACCEPTED
-            }
-        }
-
-        warp::reply::with_status(json_response, warp::http::StatusCode::OK)
+        return warp::reply::with_status(json_response, warp::http::StatusCode::OK);
     }
+    // if not malicious forward to target rpc
+    let response = forward_request_to_target_rpc(&req, target_endpoint).await;
+    let json_response;
+    match response {
+        Ok(res) => {
+            json_response = warp::reply::json(&res);
+        }
+        Err(err) => {
+            // Create a JSON response with the error message
+            json_response = warp::reply::json(&format!("Error: {}", err));
+            // Return the JSON response with status code ACCEPTED
+        }
+    }
+
+    return warp::reply::with_status(json_response, warp::http::StatusCode::OK);
 }
 
 async fn handle_rpc_request(
@@ -163,7 +153,7 @@ async fn handle_rpc_request(
     if req.method == "eth_sendRawTransaction" {
         return handle_eth_send_raw_transaction(req, alert_list, target_endpoint).await;
     }
-
+    // default other calls to target rpc
     let response = forward_request_to_target_rpc(req, target_endpoint).await;
     let json_response;
     match response {
@@ -176,7 +166,7 @@ async fn handle_rpc_request(
         }
     }
 
-    warp::reply::with_status(json_response, warp::http::StatusCode::OK)
+    return warp::reply::with_status(json_response, warp::http::StatusCode::OK);
 }
 
 async fn forward_request_to_target_rpc(
